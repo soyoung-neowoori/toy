@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>숫자 4자리 랜덤 생성기</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    button { padding: 10px 16px; font-size: 16px; }
+    .num { font-size: 28px; margin-top: 12px; font-weight: bold; }
+    .small { color: #666; margin-top: 8px; }
+    .used-list { margin-top: 12px; max-height: 120px; overflow:auto; border:1px solid #ddd; padding:8px; background:#fafafa; }
+  </style>
+</head>
+<body>
+  <h2>숫자 4자리 랜덤 생성기</h2>
+  <p>연속 숫자(오름/내림 전체)와 두 자 이상 연속되는 동일 숫자(예: 4455, 1223 등)는 제외합니다.</p>
+
+  <button id="generateBtn">번호 생성</button>
+  <div class="num" id="result">-</div>
+  <div class="small">상태: <span id="status">대기</span></div>
+
+  <h4>이미 뽑힌 번호 (localStorage)</h4>
+  <div class="used-list" id="usedList"></div>
+
+  <button id="clearBtn" style="margin-top:10px;">저장된 번호 초기화</button>
+
+<script>
+(() => {
+  const STORAGE_KEY = 'usedLast4Numbers_v1';
+
+  // localStorage에서 사용된 번호 가져오기 (Set 반환)
+  function loadUsedSet() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return new Set();
+      return new Set(arr);
+    } catch (e) {
+      console.error('loadUsedSet error', e);
+      return new Set();
+    }
+  }
+
+  // 저장
+  function saveUsedSet(set) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(set)));
+    } catch (e) {
+      console.error('saveUsedSet error', e);
+    }
+  }
+
+  // 규칙 검사: 제외 대상이면 true 반환
+  function isExcluded(numStr) {
+    // numStr은 길이 4인 문자열 '0123' 형태
+    if (numStr.length !== 4) return true;
+
+    const digits = numStr.split('').map(d => parseInt(d, 10));
+
+    // 1) 두 자리 이상 연속 같은 숫자 존재하는지 검사 (예: '11', '222' 등)
+    for (let i = 0; i < digits.length - 1; i++) {
+      if (digits[i] === digits[i+1]) {
+        return true; // 두 자리 이상 연속된 동일 숫자 발견 -> 제외
+      }
+    }
+
+    // 2) 전체가 오름차순(각 자리마다 +1)인지 검사 (ex: 0123, 1234, 4567, ...)
+    let asc = true;
+    for (let i = 0; i < digits.length - 1; i++) {
+      if (digits[i+1] !== (digits[i] + 1)) { asc = false; break; }
+    }
+    if (asc) return true;
+
+    // 3) 전체가 내림차순(각 자리마다 -1)인지 검사 (ex: 4321, 9876, ...)
+    let desc = true;
+    for (let i = 0; i < digits.length - 1; i++) {
+      if (digits[i+1] !== (digits[i] - 1)) { desc = false; break; }
+    }
+    if (desc) return true;
+
+    // 통과하면 사용 가능
+    return false;
+  }
+
+  // 랜덤 생성 시도 함수 (최대 시도 횟수 후 실패하면 전체 탐색으로 대체)
+  function generateUniqueLast4() {
+    const used = loadUsedSet();
+    const MAX_RANDOM_TRIES = 2000; // 랜덤 시도 횟수
+    let tries = 0;
+
+    // 무작위 시도
+    while (tries < MAX_RANDOM_TRIES) {
+      const n = Math.floor(Math.random() * 10000);
+      const s = String(n).padStart(4, '0');
+      if (isExcluded(s)) { tries++; continue; }
+      if (used.has(s)) { tries++; continue; }
+      // 사용 가능
+      used.add(s);
+      saveUsedSet(used);
+      return { number: s, usedCount: used.size, exhausted: false };
+    }
+
+    // 랜덤으로 못찾으면 전체 스캔 (확실한 방법)
+    for (let n = 0; n < 10000; n++) {
+      const s = String(n).padStart(4, '0');
+      if (isExcluded(s)) continue;
+      if (used.has(s)) continue;
+      used.add(s);
+      saveUsedSet(used);
+      return { number: s, usedCount: used.size, exhausted: false };
+    }
+
+    // 모든 후보가 소진된 경우
+    return { number: null, usedCount: used.size, exhausted: true };
+  }
+
+  // UI 업데이트
+  const resultEl = document.getElementById('result');
+  const statusEl = document.getElementById('status');
+  const usedListEl = document.getElementById('usedList');
+  const generateBtn = document.getElementById('generateBtn');
+  const clearBtn = document.getElementById('clearBtn');
+
+  function refreshUsedList() {
+    const used = Array.from(loadUsedSet()).sort();
+    usedListEl.innerHTML = used.length ? used.join(', ') : '<i>없음</i>';
+  }
+
+  generateBtn.addEventListener('click', () => {
+    statusEl.textContent = '생성 중...';
+    // 바로 동기적으로 실행
+    const res = generateUniqueLast4();
+    if (res.exhausted) {
+      resultEl.textContent = '-';
+      statusEl.textContent = `사용 가능한 번호 모두 소진됨 (저장된 개수: ${res.usedCount})`;
+    } else {
+      resultEl.textContent = res.number;
+      statusEl.textContent = `생성 완료 — 저장된 개수: ${res.usedCount}`;
+    }
+    refreshUsedList();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    if (confirm('저장된 모든 번호를 초기화하시겠습니까?')) {
+      localStorage.removeItem(STORAGE_KEY);
+      statusEl.textContent = '저장 초기화 완료';
+      resultEl.textContent = '-';
+      refreshUsedList();
+    }
+  });
+
+  // 초기화 시 UI 업데이트
+  refreshUsedList();
+})();
+</script>
+</body>
+</html>
