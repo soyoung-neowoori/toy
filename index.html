@@ -91,7 +91,7 @@
 
     // 무작위 시도
     while (tries < MAX_RANDOM_TRIES) {
-      const n = Math.floor(Math.random() * 10000);
+      const n = Math.floor(Math.random() * 8000);
       const s = String(n).padStart(4, '0');
       if (isExcluded(s)) { tries++; continue; }
       if (used.has(s)) { tries++; continue; }
@@ -102,7 +102,7 @@
     }
 
     // 랜덤으로 못찾으면 전체 스캔 (확실한 방법)
-    for (let n = 0; n < 10000; n++) {
+    for (let n = 0; n < 8000; n++) {
       const s = String(n).padStart(4, '0');
       if (isExcluded(s)) continue;
       if (used.has(s)) continue;
@@ -157,3 +157,4 @@
 </body>
 
 </html>
+
