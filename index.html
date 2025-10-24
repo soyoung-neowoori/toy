@@ -30,11 +30,13 @@
         background: #fafafa;
       }
     </style>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
   </head>
   <body>
     <h2>숫자 4자리 랜덤 생성기</h2>
           <p>
-            4자리 숫자 중, 중복되는 숫자(예: 4402, 3131)나 연속되는 숫자(예: 1245, 5689)를 포함하지 않는 번호를 생성합니다.
+            1000~8000 사이의 숫자 중, 중복되는 숫자(예: 4402, 3131)나 연속되는 숫자(예: 1245, 5689)를 포함하지 않는 번호를 생성합니다.
           </p>
 
     <button id="generateBtn">번호 생성</button>
@@ -46,135 +48,285 @@
 
     <button id="clearBtn" style="margin-top: 10px">저장된 번호 초기화</button>
 
-    <script>
-      (() => {
-        const STORAGE_KEY = "usedLast4Numbers_v1";
+        <script>
 
-        // localStorage에서 사용된 번호 가져오기 (Set 반환)
-        function loadUsedSet() {
-          try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (!raw) return new Set();
-            const arr = JSON.parse(raw);
-            if (!Array.isArray(arr)) return new Set();
-            return new Set(arr);
-          } catch (e) {
-            console.error("loadUsedSet error", e);
-            return new Set();
-          }
-        }
+          (() => {
 
-        // 저장
-        function saveUsedSet(set) {
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(set)));
-          } catch (e) {
-            console.error("saveUsedSet error", e);
-          }
-        }
+            // Your web app's Firebase configuration
 
-        // 규칙 검사: 제외 대상이면 true 반환
-        function isExcluded(numStr) {
-          // numStr은 길이 4인 문자열 '1000' ~ '8000' 형태
-          if (numStr.length !== 4) return true;
+            const firebaseConfig = {
 
-          const digits = numStr.split('').map((d) => parseInt(d, 10));
+              apiKey: "AIzaSyCljVnvtXQgCLW3ZXg6jAmRFTsBGGXYAWk",
 
-          // 1) 2개 이상 동일한 숫자가 있는지 검사 (예: 4402, 3131)
-          const uniqueDigits = new Set(digits);
-          if (uniqueDigits.size < 4) {
-            return true;
-          }
+              authDomain: "mytoy-d40ac.firebaseapp.com",
 
-          // 2) 연속된 숫자가 있는지 검사 (예: 2425, 5657)
-          // 숫자를 정렬해서 인접한 숫자가 1 차이나는지 확인
-          const sortedDigits = [...digits].sort((a, b) => a - b);
-          for (let i = 0; i < sortedDigits.length - 1; i++) {
-            if (sortedDigits[i + 1] === sortedDigits[i] + 1) {
-              return true;
+              projectId: "mytoy-d40ac",
+
+              storageBucket: "mytoy-d40ac.firebasestorage.app",
+
+              messagingSenderId: "17110972157",
+
+              appId: "1:17110972157:web:7519854280d49f0e8db094"
+
+            };
+
+    
+
+            // Initialize Firebase
+
+            firebase.initializeApp(firebaseConfig);
+
+            const db = firebase.firestore();
+
+            const numbersCollection = db.collection("usedNumbers");
+
+    
+
+    
+
+            // UI Elements
+
+            const resultEl = document.getElementById("result");
+
+            const statusEl = document.getElementById("status");
+
+            const usedListEl = document.getElementById("usedList");
+
+            const generateBtn = document.getElementById("generateBtn");
+
+            const clearBtn = document.getElementById("clearBtn");
+
+    
+
+    
+
+            // Load used numbers from Firestore
+
+            async function loadUsedSet() {
+
+              try {
+
+                const snapshot = await numbersCollection.get();
+
+                const usedNumbers = snapshot.docs.map(doc => doc.id);
+
+                return new Set(usedNumbers);
+
+              } catch (e) {
+
+                console.error("loadUsedSet error", e);
+
+                statusEl.textContent = `DB 로딩 오류: ${e.message}`;
+
+                return new Set();
+
+              }
+
             }
-          }
 
-          // 통과하면 사용 가능
-          return false;
-        }
+    
 
-        // 랜덤 생성 시도 함수 (최대 시도 횟수 후 실패하면 전체 탐색으로 대체)
-        function generateUniqueLast4() {
-          const used = loadUsedSet();
-          const MAX_RANDOM_TRIES = 2000; // 랜덤 시도 횟수
-          let tries = 0;
+            // Rule check: true if excluded
 
-          // 무작위 시도
-          while (tries < MAX_RANDOM_TRIES) {
-            const n = Math.floor(Math.random() * 7001) + 1000; // 1000 ~ 8000
-            const s = String(n);
-            if (isExcluded(s)) {
-              tries++;
-              continue;
+            function isExcluded(numStr) {
+
+              if (numStr.length !== 4) return true;
+
+              const digits = numStr.split('').map((d) => parseInt(d, 10));
+
+              const uniqueDigits = new Set(digits);
+
+              if (uniqueDigits.size < 4) return true;
+
+              const sortedDigits = [...digits].sort((a, b) => a - b);
+
+              for (let i = 0; i < sortedDigits.length - 1; i++) {
+
+                if (sortedDigits[i + 1] === sortedDigits[i] + 1) return true;
+
+              }
+
+              return false;
+
             }
-            if (used.has(s)) {
-              tries++;
-              continue;
+
+    
+
+            // Generate a unique number
+
+            async function generateUniqueLast4() {
+
+              statusEl.textContent = "DB에서 번호 목록 로딩 중...";
+
+              const used = await loadUsedSet();
+
+              statusEl.textContent = "조건에 맞는 번호 탐색 중...";
+
+    
+
+              const MAX_RANDOM_TRIES = 2000;
+
+              let tries = 0;
+
+    
+
+              while (tries < MAX_RANDOM_TRIES) {
+
+                const n = Math.floor(Math.random() * 7001) + 1000; // 1000 ~ 8000
+
+                const s = String(n);
+
+                if (isExcluded(s) || used.has(s)) {
+
+                  tries++;
+
+                  continue;
+
+                }
+
+                // Found a number
+
+                await numbersCollection.doc(s).set({});
+
+                used.add(s);
+
+                return { number: s, usedCount: used.size, exhausted: false };
+
+              }
+
+    
+
+              // Fallback to linear scan if random tries fail
+
+              statusEl.textContent = "랜덤 탐색 실패. 전체 스캔 중...";
+
+              for (let n = 1000; n <= 8000; n++) {
+
+                const s = String(n);
+
+                if (isExcluded(s) || used.has(s)) continue;
+
+                // Found a number
+
+                await numbersCollection.doc(s).set({});
+
+                used.add(s);
+
+                return { number: s, usedCount: used.size, exhausted: false };
+
+              }
+
+    
+
+              return { number: null, usedCount: used.size, exhausted: true };
+
             }
-            // 사용 가능
-            used.add(s);
-            saveUsedSet(used);
-            return { number: s, usedCount: used.size, exhausted: false };
-          }
 
-          // 랜덤으로 못찾으면 전체 스캔 (확실한 방법)
-          for (let n = 1000; n <= 8000; n++) {
-            const s = String(n);
-            if (isExcluded(s)) continue;
-            if (used.has(s)) continue;
-            used.add(s);
-            saveUsedSet(used);
-            return { number: s, usedCount: used.size, exhausted: false };
-          }
+    
 
-          // 모든 후보가 소진된 경우
-          return { number: null, usedCount: used.size, exhausted: true };
-        }
+            // Refresh the displayed list of used numbers
 
-        // UI 업데이트
-        const resultEl = document.getElementById("result");
-        const statusEl = document.getElementById("status");
-        const usedListEl = document.getElementById("usedList");
-        const generateBtn = document.getElementById("generateBtn");
-        const clearBtn = document.getElementById("clearBtn");
+            async function refreshUsedList() {
 
-        function refreshUsedList() {
-          const used = Array.from(loadUsedSet()).sort();
-          usedListEl.innerHTML = used.length ? used.join(", ") : "<i>없음</i>";
-        }
+                statusEl.textContent = "DB에서 번호 목록 로딩 중...";
 
-        generateBtn.addEventListener("click", () => {
-          statusEl.textContent = "생성 중...";
-          // 바로 동기적으로 실행
-          const res = generateUniqueLast4();
-          if (res.exhausted) {
-            resultEl.textContent = "-";
-            statusEl.textContent = `사용 가능한 번호 모두 소진됨 (저장된 개수: ${res.usedCount})`;
-          } else {
-            resultEl.textContent = res.number;
-            statusEl.textContent = `생성 완료 — 저장된 개수: ${res.usedCount}`;
-          }
-          refreshUsedList();
-        });
+                const used = Array.from(await loadUsedSet()).sort();
 
-        clearBtn.addEventListener("click", () => {
-          if (confirm("저장된 모든 번호를 초기화하시겠습니까?")) {
-            localStorage.removeItem(STORAGE_KEY);
-            statusEl.textContent = "저장 초기화 완료";
-            resultEl.textContent = "-";
+                usedListEl.innerHTML = used.length ? used.join(", ") : "<i>없음</i>";
+
+                statusEl.textContent = `대기 (DB에 ${used.length}개 저장됨)`;
+
+            }
+
+    
+
+            // Event Listeners
+
+            generateBtn.addEventListener("click", async () => {
+
+              generateBtn.disabled = true;
+
+              clearBtn.disabled = true;
+
+              resultEl.textContent = "-";
+
+              
+
+              const res = await generateUniqueLast4();
+
+              
+
+              if (res.exhausted) {
+
+                resultEl.textContent = "-";
+
+                statusEl.textContent = `사용 가능한 번호 모두 소진됨 (DB에 ${res.usedCount}개 저장됨)`;
+
+              } else {
+
+                resultEl.textContent = res.number;
+
+                statusEl.textContent = `생성 완료! (DB에 ${res.usedCount}개 저장됨)`;
+
+              }
+
+              await refreshUsedList();
+
+              generateBtn.disabled = false;
+
+              clearBtn.disabled = false;
+
+            });
+
+    
+
+            clearBtn.addEventListener("click", async () => {
+
+              if (confirm("DB에 저장된 모든 번호를 영구적으로 삭제하시겠습니까?")) {
+
+                generateBtn.disabled = true;
+
+                clearBtn.disabled = true;
+
+                statusEl.textContent = "DB에서 모든 번호 삭제 중...";
+
+                try {
+
+                  const snapshot = await numbersCollection.get();
+
+                  if (snapshot.empty) {
+
+                     statusEl.textContent = "삭제할 번호가 없습니다.";
+
+                  } else {
+
+                    const batch = db.batch();
+
+                    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+
+                    await batch.commit();
+
+                    statusEl.textContent = "DB 초기화 완료";
+
+                  }
+
+                  resultEl.textContent = "-";
+
+                  await refreshUsedList();
+
+                } catch (e) {
+                  console.error("Clear error", e);
+                  statusEl.textContent = `초기화 오류: ${e.message}`;
+                }
+                generateBtn.disabled = false;
+                clearBtn.disabled = false;
+              }
+            });
+            // Initial load
             refreshUsedList();
-          }
-        });
 
-        // 초기화 시 UI 업데이트
-        refreshUsedList();
-      })();
-    </script>
+          })();
+
+        </script>
   </body>
 </html>
